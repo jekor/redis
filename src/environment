@@ -1,0 +1,68 @@
+uname_S=$(uname -s 2>/dev/null)
+OPTIMIZATION=${OPTIMIZATION--O2}
+DEPENDENCY_TARGETS="hiredis linenoise lua"
+CC=cc
+
+BINARIES="redis-server redis-sentinel redis-cli redis-benchmark redis-check-dump redis-check-aof"
+
+# Default settings
+STD="-std=c99 -pedantic"
+WARN=-Wall
+OPT=$OPTIMIZATION
+
+INSTALL=install
+
+# Default allocator
+if [ "$uname_S" = "Linux" ]; then
+	MALLOC=jemalloc
+else
+	MALLOC=libc
+fi
+
+# Backwards compatibility for selecting an allocator
+if [ "$USE_TCMALLOC" = "yes" ]; then
+	MALLOC=tcmalloc
+fi
+
+if [ "$USE_TCMALLOC_MINIMAL" = "yes" ]; then
+	MALLOC=tcmalloc_minimal
+fi
+
+if [ "$USE_JEMALLOC" = "yes" ]; then
+	MALLOC=jemalloc
+fi
+
+DEBUG="-g -ggdb"
+
+CFLAGS="$STD $WARN $OPT $DEBUG $CFLAGS $REDIS_CFLAGS"
+LDFLAGS="$LDFLAGS $REDIS_LDFLAGS $DEBUG"
+LIBS=-lm
+
+if [ "$uname_S" = "SunOS" ]; then
+	INSTALL="cp -pf"
+	CFLAGS="$CFLAGS -D__EXTENSIONS__ -D_XPG6"
+	LIBS="$LIBS -ldl -lnsl -lsocket -lpthread"
+elif [ "$uname_S" = "Darwin" ]; then
+else
+	LDFLAGS="$LDFLAGS -rdynamic"
+	LIBS="$LIBS -pthread"
+fi
+
+# Include paths to dependencies
+CFLAGS="$CFLAGS -I../deps/hiredis -I../deps/linenoise -I../deps/lua/src"
+
+if [ "$MALLOC" = "tcmalloc" ]; then
+	CFLAGS="$CFLAGS -DUSE_TCMALLOC"
+	LIBS="$LIBS -ltcmalloc"
+fi
+
+if [ "$MALLOC" = "tcmalloc_minimal" ]; then
+	CFLAGS="$CFLAGS -DUSE_TCMALLOC"
+	LIBS="$LIBS -ltcmalloc_minimal"
+fi
+
+if [ "$MALLOC" = "jemalloc" ]; then
+	DEPENDENCY_TARGETS="$DEPENDENCY_TARGETS jemalloc"
+	CFLAGS="$CFLAGS -DUSE_JEMALLOC -I../deps/jemalloc/include"
+	LIBS="$LIBS ../deps/jemalloc/lib/libjemalloc.a -ldl"
+fi
